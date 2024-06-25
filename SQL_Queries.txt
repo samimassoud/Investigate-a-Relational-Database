@@ -1,0 +1,128 @@
+
+
+
+
+Q1.1: Create a query that lists each movie, the film category it is classified in, and the number of times it has been rented out
+
+SOL:
+SELECT f.title,c.name, COUNT(r.rental_id )
+FROM film f
+JOIN film_category fc ON f.film_id = fc.film_id
+JOIN category c ON fc.category_id = c.category_id
+JOIN inventory i ON f.film_id = i.film_id
+JOIN rental r ON i.inventory_id = r.inventory_id
+WHERE c.name IN ('Animation', 'Children', 'Classics', 'Comedy', 'Family', 'Music')
+GROUP BY 1,2
+ORDER BY 2,1;
+
+
+
+
+
+
+
+Q2.1: Write a query that returns the store ID for the store, the year and month and the number of rental orders each store has fulfilled for that month. Your table should include a column for each of the following: year, month, store ID and count of rental orders fulfilled during that month.
+
+SOL:
+SELECT DATE_PART('month',rental_date) AS rental_month,
+ DATE_PART('year',rental_date) AS rental_year,
+ st.store_id AS store_id,
+ COUNT(r.rental_id) AS count_rentals
+FROM rental r
+JOIN staff st ON r.staff_id = st.staff_id
+JOIN store s ON st.store_id = s.store_id
+GROUP BY 1,2,3
+ORDER BY count_rentals DESC,rental_year, rental_month, store_id;
+
+
+
+
+
+
+Q2.2: Can you write a query to capture the customer name, month and year of payment, and total payment amount for each month by these top 10 paying customers?
+
+SOL:
+WITH top_ten_customers AS (
+  SELECT p.customer_id AS customer_id,
+  c.first_name || ' ' || c.last_name AS full_name,
+  SUM(p.amount) AS pay_amount
+  FROM payment p
+  JOIN customer c ON p.customer_id = c.customer_id
+  WHERE DATE_PART('year',p.payment_date)=2007
+  GROUP BY 1,2
+  ORDER BY pay_amount DESC
+  LIMIT 10 ),
+
+  monthly_payment AS(
+    SELECT p.customer_id AS customer_id,
+  c.first_name || ' ' || c.last_name AS full_name,
+  DATE_PART('month',p.payment_date) AS payment_month,
+  DATE_PART('year',p.payment_date) AS payment_year,
+  SUM(p.amount) AS monthly_total,
+  COUNT(p.amount) AS pay_countpermon
+  FROM payment p
+  JOIN customer c ON p.customer_id = c.customer_id
+  WHERE DATE_PART('year',p.payment_date)=2007
+  AND p.customer_id IN (
+    SELECT customer_id 
+    FROM top_ten_customers)
+  GROUP BY 1,2,3,4 )
+  SELECT payment_year,
+  payment_month,
+  full_name, pay_countpermon, monthly_total
+  FROM monthly_payment
+  ORDER BY 3,1,2
+
+
+
+
+
+Q2.3: write a query to compare the payment amounts in each successive month.
+
+SOL:
+WITH top_ten_customers AS (
+  SELECT p.customer_id AS customer_id,
+  c.first_name || ' ' || c.last_name AS full_name,
+  SUM(p.amount) AS pay_amount
+  FROM payment p
+  JOIN customer c ON p.customer_id = c.customer_id
+  WHERE DATE_PART('year',p.payment_date)=2007
+  GROUP BY 1,2
+  ORDER BY pay_amount DESC
+  LIMIT 10 ),
+
+  monthly_payment AS(
+    SELECT p.customer_id AS customer_id,
+  c.first_name || ' ' || c.last_name AS full_name,
+  DATE_PART('month',p.payment_date) AS payment_month,
+  DATE_PART('year',p.payment_date) AS payment_year,
+  SUM(p.amount) AS monthly_total,
+  COUNT(p.amount) AS pay_countpermon
+  FROM payment p
+  JOIN customer c ON p.customer_id = c.customer_id
+  WHERE DATE_PART('year',p.payment_date)=2007
+  AND p.customer_id IN (
+    SELECT customer_id 
+    FROM top_ten_customers)
+  GROUP BY 1,2,3,4 ),
+  monthly_difference AS (
+  SELECT payment_year,
+    payment_month,
+    full_name,
+    monthly_total,
+    LAG(monthly_total) OVER (
+      PARTITION BY customer_id 
+      -- the window is partitioned and set by customer_id which helps me do it separately for each of the top 10
+      ORDER BY payment_year, payment_month) 
+    AS previous_monthly_total,
+    -- column separator
+    monthly_total - LAG(monthly_total) OVER (
+      PARTITION BY customer_id 
+     ORDER BY payment_year, payment_month) 
+    AS monthly_diff 
+    -- end of select
+    FROM monthly_payment )
+SELECT * FROM monthly_difference
+WHERE monthly_diff IS NOT NULL
+ORDER BY monthly_diff DESC
+LIMIT 1; -- to get the top as required
